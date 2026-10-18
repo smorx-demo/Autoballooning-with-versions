@@ -3,12 +3,11 @@
 #
 # Required on the host (never committed):
 #   .env.smorx-inspection.production   app settings (POSTGRES_*, DATABASE_URL, JWT_SECRET, CORS_ORIGINS, VITE_API_URL, …)
-#                                      Run deploy/use-costsheet-database.sh to point the admin API
-#                                      at the Cost Sheet Postgres container and its own schema.
+#                                      CORS_ORIGINS must include the Inspection web origin on port 8464.
+#                                      Inspection uses only its own local Postgres service.
 #   .secrets/aws/credentials           AWS shared-credentials file, mounted read-only
 #
 # Usage:
-#   bash deploy/use-costsheet-database.sh  # once, before first API rebuild
 #   docker compose -f docker-compose.smorx-inspection.yml \
 #     --env-file .env.smorx-inspection.production up -d --build
 
@@ -42,13 +41,14 @@ services:
       - .env.smorx-inspection.production
     environment:
       UVICORN_WORKERS: ${UVICORN_WORKERS:-2}
-      COSTSHEET_ADMIN_PORTAL_ONLY: "true"
+      COSTSHEET_ADMIN_PORTAL_ONLY: "false"
+      INSPECTION_USE_LOCAL_POSTGRES: "true"
       # boto3 reads keys from the mounted file when AWS_ACCESS_KEY_ID is blank
       AWS_SHARED_CREDENTIALS_FILE: /run/secrets/aws/credentials
       AWS_PROFILE: ${SMORX_INSPECTION_AWS_PROFILE:-default}
-    networks:
-      - default
-      - costsheet-db
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "${SMORX_INSPECTION_API_PORT:-19686}:9686"
     volumes:
@@ -67,12 +67,12 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_URL: ${VITE_API_URL:-http://100.51.165.76:19686}
-        VITE_ADMIN_PORTAL_ONLY: "true"
+        VITE_ADMIN_PORTAL_ONLY: "false"
     image: smorx-inspection-web:latest
     container_name: smorx-inspection-web
     restart: unless-stopped
     ports:
-      - "${SMORX_INSPECTION_WEB_PORT:-18081}:8080"
+      - "8464:8080"
     depends_on:
       api:
         condition: service_healthy
@@ -82,8 +82,3 @@ volumes:
     name: smorx-inspection-data
   smorx-inspection-pgdata:
     name: smorx-inspection-pgdata
-
-networks:
-  costsheet-db:
-    external: true
-    name: smorx-costsheet_default

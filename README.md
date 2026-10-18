@@ -8,6 +8,20 @@
 - Email: `admin@smorx.ai`
 - Password: `admin123`
 
+The Inspection Super Admin and license records use Inspection's own database. In the
+production Compose stack, the web app is on port `8464` and the API is on port `19686`.
+The API connects only to the `smorx-inspection-db` service; Cost Sheet has a separate
+app, login service, and database.
+
+For a fresh database, the initial Super Admin can be set with `SUPERADMIN_EMAIL`,
+`SUPERADMIN_USERNAME`, `SUPERADMIN_NAME`, and `SUPERADMIN_PASSWORD` in
+`.env.smorx-inspection.production`. These settings only apply when the admin row is
+first created.
+
+The former shared Inspection/Cost Sheet auth data is not copied automatically into
+the new independent databases. The previous database remains untouched; existing
+accounts and licenses need a separate migration if they should remain available.
+
 ## Run backend
 ```bash
 cd backend

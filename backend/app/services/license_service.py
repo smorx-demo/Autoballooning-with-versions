@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.core import database as dbmod
+from app.core.config import settings
 from app.core.security import create_token, verify_password
 from app.models import ApprovedDevice, Customer, Installation, User
 from app.services import auth_service
@@ -100,14 +101,15 @@ def verify_device_for_login(customer_id: str, device_id: str, hostname: str) -> 
 
 
 def verify_user_product(user: dict, product_code: str, required_permission: str = "read") -> dict:
-    """Confirm an active engineer license or Cost Sheet super-admin access."""
+    """Confirm an active engineer license or this app's super-admin access."""
     product_code = _normalize_product(product_code)
     if user.get("role") == "super_admin":
-        if product_code != "costsheet":
-            raise HTTPException(status_code=403, detail="Super admin web access is only enabled for Cost Sheet")
+        admin_product = "costsheet" if settings.costsheet_admin_portal_only else "autoballoon"
+        if product_code != admin_product:
+            raise HTTPException(status_code=403, detail="Super admin access is not enabled for this product")
         return {
             "customer_id": None,
-            "organization": "Cost Sheet",
+            "organization": "Cost Sheet" if admin_product == "costsheet" else "Inspection",
             "product_code": product_code,
             "super_admin": True,
         }

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 
@@ -25,6 +26,13 @@ class Settings:
         in {"1", "true", "yes"}
     )
     database_url: str = (os.getenv("DATABASE_URL") or "").strip()
+    # Production compose points Inspection at its own local Postgres service.
+    # This takes precedence over legacy DATABASE_URL values in old env files.
+    if (os.getenv("INSPECTION_USE_LOCAL_POSTGRES") or "").strip().lower() in {"1", "true", "yes"}:
+        pg_user = quote((os.getenv("POSTGRES_USER") or "postgres").strip(), safe="")
+        pg_password = quote(os.getenv("POSTGRES_PASSWORD") or "", safe="")
+        pg_database = quote((os.getenv("POSTGRES_DB") or "inspection").strip(), safe="")
+        database_url = f"postgresql://{pg_user}:{pg_password}@db:5432/{pg_database}"
     jwt_secret: str = os.getenv("JWT_SECRET", "smorx-dev-secret-change-in-prod")
     jwt_algorithm: str = "HS256"
     pwd_pepper: str = os.getenv("PWD_PEPPER", "smorx-pepper")
@@ -40,6 +48,10 @@ class Settings:
     ).strip().rstrip("/")
     # Comma-separated browser origins for hosted web UI (e.g. https://app.example.com)
     cors_origins: str = (os.getenv("CORS_ORIGINS") or "").strip()
+    superadmin_email: str = (os.getenv("SUPERADMIN_EMAIL") or "admin@smorx.ai").strip()
+    superadmin_username: str = (os.getenv("SUPERADMIN_USERNAME") or "admin").strip()
+    superadmin_name: str = (os.getenv("SUPERADMIN_NAME") or "Super Admin").strip()
+    superadmin_password: str = os.getenv("SUPERADMIN_PASSWORD") or "admin123"
 
 
 settings = Settings()

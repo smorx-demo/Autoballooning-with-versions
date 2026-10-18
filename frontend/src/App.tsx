@@ -145,7 +145,11 @@ function AccessDeniedPage() {
     <div className="page-center">
       <div className="card">
         <h1>{APP_TITLE}</h1>
-        <p className="muted">This portal is for Cost Sheet super administrators.</p>
+        <p className="muted">
+          {COSTSHEET_ADMIN_PORTAL
+            ? "This portal is for Cost Sheet super administrators."
+            : "Super admin access is required to open this page."}
+        </p>
         <button
           className="btn btn-primary"
           onClick={() => {

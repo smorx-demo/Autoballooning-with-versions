@@ -6,6 +6,8 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from app.core.config import settings
+
 ROOT = Path(__file__).resolve().parents[2]  # backend/
 DB_PATH = ROOT / "data" / "smorx.json"
 
@@ -22,10 +24,10 @@ def ensure_seed(hash_password) -> dict:
         "users": [
             {
                 "id": "u-admin",
-                "username": "admin",
-                "email": "admin@smorx.ai",
-                "full_name": "Super Admin",
-                "password_hash": hash_password("admin123"),
+                "username": settings.superadmin_username,
+                "email": settings.superadmin_email,
+                "full_name": settings.superadmin_name,
+                "password_hash": hash_password(settings.superadmin_password),
                 "role": "super_admin",
                 "org_id": None,
                 "active": True,

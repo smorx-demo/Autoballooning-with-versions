@@ -43,8 +43,10 @@ def login(body: LoginRequest):
     product_code = (body.product_code or "").strip().lower()
     customer = None
     if product_code:
-        if product_code != "costsheet":
+        if product_code not in {"autoballoon", "costsheet"}:
             raise HTTPException(status_code=403, detail="This login is not available for that product")
+        if settings.costsheet_admin_portal_only and product_code != "costsheet":
+            raise HTTPException(status_code=403, detail="Cost Sheet administrator access only")
         customer = license_service.verify_user_product(user, product_code)
     if settings.costsheet_admin_portal_only and user.get("role") != "super_admin" and product_code != "costsheet":
         raise HTTPException(status_code=403, detail="Cost Sheet administrator access only")

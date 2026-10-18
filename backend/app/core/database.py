@@ -167,15 +167,15 @@ def _create_schema_and_seed(hash_password) -> None:
     Base.metadata.create_all(bind=engine)
     ensure_commercial_schema()
     with SessionLocal() as db:
-        admin = db.scalar(select(User).where(User.email == "admin@smorx.ai"))
+        admin = db.scalar(select(User).where(User.email == settings.superadmin_email))
         if admin is None:
             db.add(
                 User(
                     id="u-admin",
-                    username="admin",
-                    email="admin@smorx.ai",
-                    full_name="Super Admin",
-                    password_hash=hash_password("admin123"),
+                    username=settings.superadmin_username,
+                    email=settings.superadmin_email,
+                    full_name=settings.superadmin_name,
+                    password_hash=hash_password(settings.superadmin_password),
                     role="super_admin",
                     org_id=None,
                     customer_id=None,

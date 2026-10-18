@@ -20,7 +20,8 @@ const inputStyle: React.CSSProperties = {
   width: "100%",
 };
 
-const COSTSHEET_CLIENTS_URL = "http://100.51.165.76:28080/clients";
+const PRODUCT_CODE = COSTSHEET_ADMIN_PORTAL ? "costsheet" : "autoballoon";
+const PRODUCT_NAME = COSTSHEET_ADMIN_PORTAL ? "Cost Sheet" : "AutoBalloon & Inspection";
 
 type DeviceRow = ApprovedDevice & { customer_name: string };
 
@@ -35,7 +36,7 @@ export default function AdminPage() {
   const [installs, setInstalls] = useState<Installation[]>([]);
 
   const [companyName, setCompanyName] = useState("");
-  const productCode = "costsheet";
+  const productCode = PRODUCT_CODE;
   const [licenseKey, setLicenseKey] = useState("");
   const [installPwd, setInstallPwd] = useState("");
   const [deviceId, setDeviceId] = useState("");
@@ -91,7 +92,7 @@ export default function AdminPage() {
     if (!companyName.trim()) throw new Error("Company / organization name is required");
     if (!fullName.trim() || !email.trim()) throw new Error("Engineer name and email are required");
     if (!email.includes("@")) throw new Error("Valid engineer email is required");
-    if (!installPwd.trim()) throw new Error("Install password is required for Cost Sheet EXE activation");
+    if (!installPwd.trim()) throw new Error(`Install password is required for ${PRODUCT_NAME} EXE activation`);
     if (requireApproval && (!deviceId.trim() || !hostname.trim())) {
       throw new Error("Device ID and Host name are required when device approval is enabled");
     }
@@ -155,11 +156,11 @@ export default function AdminPage() {
       <div className="card wide">
         <div className="row-between mb">
           <div>
-            <h1>{COSTSHEET_ADMIN_PORTAL ? "Cost Sheet Super Admin" : "Super Admin"}</h1>
+            <h1>{COSTSHEET_ADMIN_PORTAL ? "Cost Sheet Super Admin" : "Inspection Super Admin"}</h1>
             <p className="muted">
               {COSTSHEET_ADMIN_PORTAL
-                ? "Provision Cost Sheet customers, licenses, approved devices, and engineer accounts. Records are saved in the AWS database."
-                : "Fill one form to provision organization, license, device, and engineer. All records save to the database (AWS) and appear in the lists below."}
+                ? "Provision Cost Sheet customers, licenses, approved devices, and engineer accounts. Records save in the Cost Sheet database."
+                : "Fill one form to provision organization, license, device, and engineer. Records save in the Inspection database and appear in the lists below."}
             </p>
           </div>
           <button className="btn btn-outline btn-sm" onClick={logout}>
@@ -169,6 +170,25 @@ export default function AdminPage() {
 
         {err && <div className="error mb">{err}</div>}
         {msg && <div className="ok mb">{msg}</div>}
+
+        {!COSTSHEET_ADMIN_PORTAL && (
+          <div className="section">
+            <h2>Inspection workspace</h2>
+            <div className="row mt" style={{ gap: 10 }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                style={{ width: "auto" }}
+                onClick={() => {
+                  clearJobSession();
+                  nav("/app");
+                }}
+              >
+                Open AutoBalloon &amp; Inspection
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="section">
           <h2>Provision customer (one form)</h2>
@@ -299,13 +319,6 @@ export default function AdminPage() {
           >
             {busy ? "Saving…" : "Create & save all"}
           </button>
-          <a
-            className="btn btn-outline mt"
-            href={COSTSHEET_CLIENTS_URL}
-            style={{ display: "inline-flex", marginLeft: 10 }}
-          >
-            Go to Cost Sheet Web App
-          </a>
         </div>
 
         <div className="section">
@@ -363,7 +376,13 @@ export default function AdminPage() {
               {customers.map((c) => (
                 <tr key={c.customer_id}>
                   <td>{c.organization}</td>
-                  <td>{c.product_code === "costsheet" ? "Cost Sheet" : "Other product"}</td>
+                  <td>
+                    {c.product_code === "costsheet"
+                      ? "Cost Sheet"
+                      : c.product_code === "autoballoon"
+                        ? "AutoBalloon & Inspection"
+                        : c.product_code || "Other product"}
+                  </td>
                   <td>
                     <code>{c.license_key}</code>
                   </td>
@@ -378,7 +397,7 @@ export default function AdminPage() {
                       style={{ width: "auto", color: "#b42318" }}
                       onClick={async () => {
                         const confirmed = window.confirm(
-                          "Delete " + c.organization + " and its Cost Sheet license, registered devices, activations, and linked engineer accounts? The organization is removed only when no other customer or user still uses it. Historical job records are retained without customer/device account links.",
+                          `Delete ${c.organization} and its ${c.product_code === "costsheet" ? "Cost Sheet" : "AutoBalloon & Inspection"} license, registered devices, activations, and linked engineer accounts? The organization is removed only when no other customer or user still uses it. Historical job records are retained without customer/device account links.`,
                         );
                         if (!confirmed) return;
                         setErr("");
@@ -521,21 +540,6 @@ export default function AdminPage() {
           </table>
         </div>
 
-        {!COSTSHEET_ADMIN_PORTAL && (
-          <div className="mt">
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              style={{ width: "auto" }}
-              onClick={() => {
-                clearJobSession();
-                nav("/app");
-              }}
-            >
-              ← Open ballooning app
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

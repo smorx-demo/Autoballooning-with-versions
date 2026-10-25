@@ -97,10 +97,6 @@ def _finalize(job_id: str, meta: dict, user: dict, link: bool | None) -> dict:
     meta["report_rows"] = _build_report_rows(src, balloons)
     _ensure_measure_columns(meta)
     out_pdf = _job_dir(job_id) / f"ballooned_{idx}.pdf"
-    balloons = _draw_balloons_overlay(src, balloons, out_pdf)
-    meta["balloons"] = balloons
-    dv.draw_version_overlay(out_pdf, balloons, highlight, version)
-    _render_preview(out_pdf, _job_dir(job_id) / "balloon_preview.png", 0)
 
     info = {
         "drawing_key": key,
@@ -110,10 +106,17 @@ def _finalize(job_id: str, meta: dict, user: dict, link: bool | None) -> dict:
         "new_version": created,
         "changes": changes,
         "highlighted": sorted(highlight),
+        # Highlight follows the dimension (position), not the balloon number.
+        "highlight_features": dv.highlight_features(balloons, highlight, changes),
     }
     meta["drawing_version"] = info
     meta["balloon_numbering"] = "continuous"
     meta["ballooned_pdf"] = out_pdf.name
+    # Saved first: the redraw below re-applies the highlight + Version stamp from meta.json.
+    _save_meta(job_id, meta, sync_files=False)
+    balloons = _draw_balloons_overlay(src, balloons, out_pdf)
+    meta["balloons"] = balloons
+    _render_preview(out_pdf, _job_dir(job_id) / "balloon_preview.png", 0)
     _save_meta(job_id, meta)
     return {
         "job_id": job_id,

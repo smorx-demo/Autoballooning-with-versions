@@ -860,6 +860,8 @@ export type DrawingVersionInfo = {
   new_version?: boolean;
   changes?: DrawingChange[];
   highlighted?: number[];
+  /** Highlighted dimensions by position — survive balloon renumbering. */
+  highlight_features?: { balloon: number; status: string; page: number; x: number; y: number; width: number; height: number }[];
   pending?: boolean;
 };
 

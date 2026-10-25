@@ -22,6 +22,7 @@ import {
   type InstrumentSuggestion,
 } from "../constants/instrumentSuggest";
 import InstrumentSettingsPanel from "../components/InstrumentSettingsPanel";
+import { currentHighlightMap, highlightedBalloonNumbers } from "../constants/versionHighlight";
 import { getJobSession, setJobSession, useAuth } from "../auth";
 import BalloonCanvas, { type Mode } from "../components/BalloonCanvas";
 import ZoomImageViewer from "../components/ZoomImageViewer";
@@ -1222,7 +1223,12 @@ export default function InspectionPage() {
               <tbody>
                 {drawingVersion.changes!.map((c) => (
                   <tr key={`${c.status}-${c.balloon}`}>
-                    <td>{c.balloon}</td>
+                    <td>
+                      {(() => {
+                        const now = currentHighlightMap(drawingVersion, job?.balloons).get(c.balloon);
+                        return now !== undefined && now !== c.balloon ? `${now} (was ${c.balloon})` : c.balloon;
+                      })()}
+                    </td>
                     <td>{c.status}</td>
                     <td>{c.page}</td>
                     <td>{c.old_value || "—"}</td>
@@ -1584,6 +1590,7 @@ export default function InspectionPage() {
               selected={selected}
               busy={busy && mode !== "delete" && mode !== "create" && mode !== "area" && !unsavedEdits}
               liveDraw
+              highlighted={highlightedBalloonNumbers(drawingVersion, job?.balloons)}
               pageGeometry={job?.page_geometry}
               workArea={
                 workArea && workArea.page === viewPage + 1

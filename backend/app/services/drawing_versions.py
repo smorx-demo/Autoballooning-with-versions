@@ -35,6 +35,12 @@ MATCH_WINDOW = 0.025
 ROW_BAND = 0.015
 
 HIGHLIGHT_COLOR = (0.043, 0.18, 0.42)  # dark blue #0B2E6B — balloons are red
+# Changed / New balloons: bold dark-green rim + leader, fluorescent orange fill, bold black number
+CHANGED_BALLOON_RIM = (0.0, 0.39, 0.0)  # dark green #006400
+CHANGED_BALLOON_FILL = (1.0, 0.37, 0.08)  # fluorescent orange #FF5F15
+CHANGED_BALLOON_TEXT = (0.0, 0.0, 0.0)
+CHANGED_BALLOON_RIM_WIDTH = 2.6
+CHANGED_BALLOON_LEADER_WIDTH = 1.6
 HIGHLIGHT_WIDTH = 2.5
 HIGHLIGHT_PAD = 3.0
 
@@ -240,6 +246,160 @@ def strip_status(entries: list[dict]) -> list[dict]:
 
 
 # ---------------------------------------------------------------- output overlay
+
+
+def _to_chars(balloons: list[dict]):
+    from app.services.autoballoon_engine import Characteristic
+
+    def f(v):
+        return float(v) if v is not None else None
+
+    return [
+        Characteristic(
+            balloon=int(b["balloon"]), page=int(b.get("page") or 1), text=str(b.get("text") or ""),
+            x=float(b.get("x") or 0), y=float(b.get("y") or 0),
+            width=float(b.get("width") or 20), height=float(b.get("height") or 12),
+            category=str(b.get("category") or ""), pattern=str(b.get("pattern") or ""), family="",
+            bx=f(b.get("bx")), by=f(b.get("by")), tx=f(b.get("tx")), ty=f(b.get("ty")),
+            arrow_size=f(b.get("arrow_size")),
+        )
+        for b in balloons
+    ]
+
+
+def _draw_changed_balloons(doc: fitz.Document, balloons: list[dict]) -> None:
+    """Bold green/orange balloons with black numbers, same geometry as draw_balloons."""
+    import math
+
+    from app.services.autoballoon_engine import _arrowhead, _balloon_radius
+
+    for page in doc:
+        items = [b for b in balloons if int(b.get("page") or 1) == page.number + 1]
+        if not items:
+            continue
+        shape = page.new_shape()
+        for b in items:
+            label = str(int(b["balloon"]))
+            r = _balloon_radius(page, label)
+            cx, cy = float(b["bx"]), float(b["by"])
+            tx = float(b["tx"]) if b.get("tx") is not None else float(b["x"]) + float(b.get("width") or 20) / 2
+            ty = float(b["ty"]) if b.get("ty") is not None else float(b["y"]) + float(b.get("height") or 12) / 2
+            arrow_scale = float(b["arrow_size"]) if b.get("arrow_size") is not None else 1.0
+            dx, dy = tx - cx, ty - cy
+            dist = math.hypot(dx, dy) or 1.0
+            ux, uy = dx / dist, dy / dist
+            tip_gap = max(2.0, min(float(b.get("width") or 20), float(b.get("height") or 12)) * 0.15 + 1.5)
+            start = fitz.Point(cx + ux * (r + 0.4), cy + uy * (r + 0.4))
+            tip = fitz.Point(tx - ux * tip_gap, ty - uy * tip_gap)
+
+            shape.draw_line(start, tip)
+            shape.finish(color=CHANGED_BALLOON_RIM, width=CHANGED_BALLOON_LEADER_WIDTH)
+            tip_p, left, right = _arrowhead(tip, start, size=max(2.2, r * 0.38 * arrow_scale))
+            shape.draw_polyline([left, tip_p, right])
+            shape.finish(color=CHANGED_BALLOON_RIM, fill=CHANGED_BALLOON_RIM, width=0.4, closePath=True)
+
+            shape.draw_circle(fitz.Point(cx, cy), r)
+            shape.finish(color=CHANGED_BALLOON_RIM, fill=CHANGED_BALLOON_FILL, width=CHANGED_BALLOON_RIM_WIDTH)
+
+            fontsize = r * (0.95 if len(label) >= 4 else 1.05 if len(label) == 3 else 1.25)
+            tw = fitz.get_text_length(label, fontname="hebo", fontsize=fontsize)
+            shape.insert_text(
+                fitz.Point(cx - tw / 2, cy + fontsize * 0.36),
+                label,
+                fontsize=fontsize,
+                fontname="hebo",  # Helvetica-Bold
+                color=CHANGED_BALLOON_TEXT,
+            )
+        shape.commit()
+
+
+def draw_highlighted_balloons(src_pdf: Path, out_pdf: Path, balloons: list[dict], highlight: set[int]) -> None:
+    """Redraw the output: unchanged balloons red (as today), Changed / New balloons
+    bold dark-green rim, fluorescent-orange fill and bold black number.
+
+    Balloons must already carry bx/by (placed), so positions match the normal output.
+    The source drawing is only read; the result goes to out_pdf.
+    """
+    from app.services.autoballoon_engine import draw_balloons
+
+    normal = [b for b in balloons if int(b["balloon"]) not in highlight]
+    marked = [b for b in balloons if int(b["balloon"]) in highlight]
+    src = fitz.open(str(src_pdf))
+    try:
+        out = draw_balloons(src, _to_chars(normal))
+        try:
+            _draw_changed_balloons(out, marked)
+            data = out.tobytes(deflate=True, garbage=3)
+        finally:
+            out.close()
+    finally:
+        src.close()
+    out_pdf.write_bytes(data)
+
+
+def highlight_features(balloons: list[dict], numbers: set[int], changes: list[dict]) -> list[dict]:
+    """Remember highlighted features by their dimension box, so renumbering keeps the highlight."""
+    status = {int(c["balloon"]): c["status"] for c in changes}
+    return [
+        {
+            "balloon": int(b["balloon"]),
+            "status": status.get(int(b["balloon"]), ""),
+            "page": int(b.get("page") or 1),
+            "x": float(b.get("x") or 0),
+            "y": float(b.get("y") or 0),
+            "width": float(b.get("width") or 0),
+            "height": float(b.get("height") or 0),
+        }
+        for b in balloons
+        if int(b["balloon"]) in numbers
+    ]
+
+
+def current_highlight_numbers(features: list[dict], balloons: list[dict]) -> dict[int, int]:
+    """Map original highlighted balloon no. → current balloon no. on the same dimension."""
+    out: dict[int, int] = {}
+    used: set[int] = set()
+    for f in features:
+        fx, fy = _centre(f)
+        tol = max(3.0, 0.6 * min(float(f.get("height") or 12), float(f.get("width") or 12)))
+        best, best_d = None, tol
+        for b in balloons:
+            n = int(b.get("balloon") or 0)
+            if n in used or int(b.get("page") or 1) != int(f["page"]):
+                continue
+            bx, by = _centre(b)
+            d = ((bx - fx) ** 2 + (by - fy) ** 2) ** 0.5
+            if d <= best_d:
+                best, best_d = n, d
+        if best is not None:
+            used.add(best)
+            out[int(f["balloon"])] = best
+    return out
+
+
+def apply_version_overlay_for_job(job_dir: Path, src_pdf: Path, out_pdf: Path, balloons: list[dict]) -> None:
+    """Re-apply the version highlight after any redraw of the ballooned PDF (edits, renumbering).
+
+    Reads the job's drawing_version; highlights follow the dimension, not the balloon number.
+    Never raises — a failure leaves the normal ballooned PDF as it is.
+    """
+    try:
+        meta_path = job_dir / "meta.json"
+        if not meta_path.exists():
+            return
+        info = (json.loads(meta_path.read_text(encoding="utf-8")) or {}).get("drawing_version") or {}
+        if not info.get("version") or info.get("pending"):
+            return
+        features = info.get("highlight_features")
+        if features is None:  # jobs versioned before features were stored
+            numbers = {int(n) for n in info.get("highlighted") or []}
+        else:
+            numbers = set(current_highlight_numbers(features, balloons).values())
+        if numbers:
+            draw_highlighted_balloons(src_pdf, out_pdf, balloons, numbers)
+        draw_version_overlay(out_pdf, balloons, numbers, int(info["version"]))
+    except Exception:
+        pass
 
 
 def draw_version_overlay(pdf_path: Path, balloons: list[dict], highlight: set[int], version: int) -> None:

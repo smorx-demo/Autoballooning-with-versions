@@ -708,6 +708,8 @@ def _draw_balloons_overlay(src_pdf: Path, balloons: list[dict], out_pdf: Path) -
             nb["ty"] = c.ty
             nb["arrow_size"] = c.arrow_size
             updated.append(nb)
+        from app.services.drawing_versions import apply_version_overlay_for_job
+        apply_version_overlay_for_job(out_pdf.parent, src_pdf, out_pdf, updated)
         return updated
     finally:
         doc.close()

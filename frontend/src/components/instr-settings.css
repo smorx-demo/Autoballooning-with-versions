@@ -1,0 +1,134 @@
+/* Instrument Settings panel — every selector is prefixed instr-settings- */
+
+.instr-settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100; /* above .report-modal-backdrop (1000) */
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 16px;
+  overflow: auto;
+}
+
+.instr-settings-modal {
+  width: min(1100px, 100%);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px 20px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+
+.instr-settings-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.instr-settings-head h2 { margin: 0; }
+.instr-settings-head p { margin: 4px 0 0; }
+
+.instr-settings-readonly {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  color: var(--muted);
+}
+
+.instr-settings-ratios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-bottom: 12px;
+}
+.instr-settings-ratios label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+.instr-settings-ratio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+}
+.instr-settings-ratio .instr-settings-input { width: 72px; }
+
+.instr-settings-wrap { overflow-x: auto; }
+
+.instr-settings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+.instr-settings-table th,
+.instr-settings-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.instr-settings-table th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+.instr-settings-name { white-space: nowrap; font-weight: 600; padding-top: 12px !important; }
+.instr-settings-center { text-align: center !important; padding-top: 12px !important; }
+.instr-settings-off td { opacity: 0.5; }
+
+.instr-settings-input {
+  width: 100%;
+  min-width: 70px;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 7px;
+  font: inherit;
+}
+.instr-settings-input:disabled { opacity: 0.7; }
+.instr-settings-input-bad { border-color: #f97316; }
+
+.instr-settings-err {
+  color: #f97316;
+  font-size: 0.78rem;
+  margin-top: 2px;
+}
+
+.instr-settings-note { font-size: 0.82rem; margin: 10px 0; }
+
+.instr-settings-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+/* 2-second yellow flash on report rows whose instrument changed */
+@keyframes instr-settings-flash {
+  0%, 60% { background-color: rgba(250, 204, 21, 0.45); }
+  100% { background-color: transparent; }
+}
+.report-table tbody tr:has(.instr-settings-flash) > td {
+  animation: instr-settings-flash 2s ease-out;
+}
+
+.instr-settings-toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 1200;
+  background: #14532d;
+  color: #dcfce7;
+  border: 1px solid #22c55e;
+  border-radius: 10px;
+  padding: 10px 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  font-size: 0.9rem;
+}

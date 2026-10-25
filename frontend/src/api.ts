@@ -1,5 +1,6 @@
 import { isDesktopApp } from "./device";
 import { COSTSHEET_ADMIN_PORTAL } from "./constants/branding";
+import type { EditableInstrumentRules } from "./constants/instrumentSuggest";
 
 const ENV_API = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") || "";
 const LOCAL_API_FALLBACKS = ["http://127.0.0.1:9686", "http://localhost:9686"];
@@ -354,6 +355,20 @@ export const api = {
     req<{ count: number; balloons: Balloon[]; pass_log: unknown[]; page_count?: number }>(
       `/api/jobs/${jobId}/balloon?file_index=${fileIndex}&passes=1&use_tiles=true&numbering_mode=${numberingMode}`,
       { method: "POST" }),
+  runBalloonVersioned: (jobId: string, fileIndex = 0) =>
+    req<VersionedBalloonResult>(`/api/jobs/${jobId}/balloon/versioned?file_index=${fileIndex}`, { method: "POST" }),
+  confirmDrawingMatch: (jobId: string, link: boolean) =>
+    req<VersionedBalloonResult>(`/api/jobs/${jobId}/balloon/versioned/confirm?link=${link}`, { method: "POST" }),
+  saveDrawingMap: (jobId: string) =>
+    req<{ ok: boolean; version: number; count: number; max_balloon: number }>(
+      `/api/jobs/${jobId}/drawing-map/save`,
+      { method: "POST" }),
+  getInstrumentRules: () => req<InstrumentRulesResponse>("/api/settings/instrument-rules"),
+  saveInstrumentRules: (rules: EditableInstrumentRules) =>
+    req<InstrumentRulesResponse>("/api/settings/instrument-rules", {
+      method: "PUT",
+      body: JSON.stringify(rules),
+    }),
   auditCrosscheck: (jobId: string, fileIndex = 0) =>
     req<{
       before: number;
@@ -700,6 +715,7 @@ export type ReportRow = {
   instr_id: string;
   measured: string[];
   remarks: string;
+  instrument_auto?: boolean | null;
 };
 
 export type MeasureCol = {
@@ -825,3 +841,42 @@ export function measureStatus(
   if (m >= a && m <= b) return "yellow";
   return "red";
 }
+
+/** One row of a drawing version's change summary. */
+export type DrawingChange = {
+  balloon: number;
+  status: "Changed" | "New" | "Removed";
+  page: number;
+  old_value: string;
+  new_value: string;
+};
+
+/** Stored on the job as `drawing_version` after versioned auto ballooning. */
+export type DrawingVersionInfo = {
+  drawing_key: string;
+  identified_by?: "part_number" | "file_name";
+  part_number?: string;
+  version?: number;
+  new_version?: boolean;
+  changes?: DrawingChange[];
+  highlighted?: number[];
+  pending?: boolean;
+};
+
+export type VersionedBalloonResult = {
+  job_id: string;
+  count: number;
+  page_count?: number;
+  balloons?: Balloon[];
+  drawing_version?: DrawingVersionInfo;
+  needs_confirmation?: boolean;
+  candidate?: { drawing_key: string; file_name: string; latest_version: number };
+};
+
+/** Instrument auto-selection rules from the settings API (rules: null = built-in defaults). */
+export type InstrumentRulesResponse = {
+  rules: EditableInstrumentRules | null;
+  updated_by: string;
+  updated_at: string;
+  can_edit: boolean;
+};

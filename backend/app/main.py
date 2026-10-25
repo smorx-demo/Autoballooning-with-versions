@@ -61,6 +61,10 @@ app.include_router(users.router)
 app.include_router(customers.router)
 if not ADMIN_PORTAL_ONLY:
     app.include_router(autoballoon.router)
+    from app.api.routes import drawing_versions
+    app.include_router(drawing_versions.router)
+    from app.api.routes import app_settings
+    app.include_router(app_settings.router)
 
 if STATIC.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")

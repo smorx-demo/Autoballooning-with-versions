@@ -57,6 +57,7 @@ class ReportRow(BaseModel):
     measured: list[str] = Field(default_factory=lambda: ["", "", ""])
     remarks: str = ""
     page: int = 1
+    instrument_auto: bool | None = None
 
 
 class ReportPayload(BaseModel):

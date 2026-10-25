@@ -11,6 +11,17 @@ import {
   type ReportDownloadFilter,
   type ReportRow,
 } from "../api";
+import type { DrawingVersionInfo } from "../api";
+import {
+  featureTypeFor,
+  getActiveRules,
+  mergeRules,
+  setActiveRules,
+  suggestInstrument,
+  type EditableInstrumentRules,
+  type InstrumentSuggestion,
+} from "../constants/instrumentSuggest";
+import InstrumentSettingsPanel from "../components/InstrumentSettingsPanel";
 import { getJobSession, setJobSession, useAuth } from "../auth";
 import BalloonCanvas, { type Mode } from "../components/BalloonCanvas";
 import ZoomImageViewer from "../components/ZoomImageViewer";
@@ -485,7 +496,13 @@ export default function InspectionPage() {
     setAuditMsg("Auto ballooning running......");
     try {
       await flushUnsavedEdits();
-      const res = await api.runBalloon(jobId, 0, numberingMode);
+      let res = await api.runBalloonVersioned(jobId, 0);
+      if (res.needs_confirmation && res.candidate) {
+        const link = window.confirm(
+          `No part number was found in the title block.\n\nThe file name matches existing drawing "${res.candidate.file_name}" (Version ${res.candidate.latest_version}).\n\nOK = same drawing (reuse its balloon numbers)\nCancel = treat as a new drawing`,
+        );
+        res = await api.confirmDrawingMatch(jobId, link);
+      }
       await refresh(jobId, { bumpPreview: true, reportHint: showReport });
       setMode("edit");
       setShowInput(false);
@@ -495,6 +512,25 @@ export default function InspectionPage() {
       setAuditMsg("");
     } finally {
       setBallooning(false);
+      setBusy(false);
+    }
+  };
+
+  const onSaveDrawingMap = async () => {
+    if (!jobId) return;
+    const ok = window.confirm(
+      "Save the current balloons as this drawing's balloon map?\n\nFuture uploads of this drawing will reuse these numbers.",
+    );
+    if (!ok) return;
+    setBusy(true);
+    setErr("");
+    try {
+      await flushUnsavedEdits();
+      const res = await api.saveDrawingMap(jobId);
+      setAuditMsg(`Balloon map saved for Version ${res.version}: ${res.count} balloons. New features will start at ${res.max_balloon + 1}.`);
+    } catch (e: any) {
+      setErr(e.message || "Could not save balloon map");
+    } finally {
       setBusy(false);
     }
   };
@@ -1049,6 +1085,8 @@ export default function InspectionPage() {
     void doUndo();
   };
 
+  const drawingVersion = (job as (Job & { drawing_version?: DrawingVersionInfo }) | null)?.drawing_version;
+
   return (
     <div className="app-shell">
       <div className="topbar">
@@ -1133,6 +1171,71 @@ export default function InspectionPage() {
 
       {err && <div className="error mb">{err}</div>}
       {auditMsg && <div className="ok mb">{auditMsg}</div>}
+
+      {drawingVersion && !drawingVersion.pending && drawingVersion.version && (
+        <div className="card wide mb" style={{ width: "100%" }}>
+          <div className="row-between mb">
+            <div>
+              <h3 style={{ margin: 0 }}>
+                <span
+                  style={{
+                    background: "#0B2E6B",
+                    color: "#fff",
+                    borderRadius: 6,
+                    padding: "2px 10px",
+                    marginRight: 8,
+                  }}
+                >
+                  Version {drawingVersion.version}
+                </span>
+                {drawingVersion.part_number || drawingVersion.drawing_key}
+              </h3>
+              <p className="muted" style={{ margin: "4px 0 0" }}>
+                {drawingVersion.new_version
+                  ? drawingVersion.version === 1
+                    ? "First upload of this drawing — balloon map saved."
+                    : "Changes found — saved as a new version. Changed / new features are boxed in dark blue."
+                  : "Matches the latest saved version — no new version created."}
+                {drawingVersion.identified_by === "file_name" ? " Identified by file name (no part number found)." : ""}
+              </p>
+            </div>
+            <button
+              className="btn btn-ghost btn-sm"
+              disabled={busy}
+              onClick={() => void onSaveDrawingMap()}
+              title="Use the current (edited) balloons as the numbering map for future uploads of this drawing"
+            >
+              Save balloons as map
+            </button>
+          </div>
+          {(drawingVersion.changes?.length || 0) > 0 ? (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Balloon</th>
+                  <th>Status</th>
+                  <th>Page</th>
+                  <th>Old value</th>
+                  <th>New value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {drawingVersion.changes!.map((c) => (
+                  <tr key={`${c.status}-${c.balloon}`}>
+                    <td>{c.balloon}</td>
+                    <td>{c.status}</td>
+                    <td>{c.page}</td>
+                    <td>{c.old_value || "—"}</td>
+                    <td>{c.new_value || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="muted" style={{ margin: 0 }}>No changes in this version.</p>
+          )}
+        </div>
+      )}
 
       {missing.length > 0 && (
         <div className="card wide mb" style={{ width: "100%" }}>
@@ -1961,6 +2064,142 @@ function ReportPanel({
     setRows((rs) => rs.map((x) => (x.balloon === balloon ? { ...x, ...patch } : x)));
   };
 
+  // Instrument auto-suggest (rules: Instrument Settings; defaults in constants/instrument_rules.json)
+  const [rulesRev, setRulesRev] = useState(0);
+  const [rulesCanEdit, setRulesCanEdit] = useState(false);
+  const [showInstrSettings, setShowInstrSettings] = useState(false);
+  const [instrToast, setInstrToast] = useState("");
+  const [flashBalloons, setFlashBalloons] = useState<Set<number>>(() => new Set());
+  // Balloons whose instrument was picked by hand this session (before the flag is saved).
+  const manualInstrRef = useRef<Set<number>>(new Set());
+  const suggestBalloons = new Map((job.balloons || []).map((b) => [b.balloon, b]));
+  const suggestionFor = (r: ReportRow): InstrumentSuggestion =>
+    suggestInstrument({
+      nominal: r.nominal,
+      tol_low: r.tol_low,
+      tol_high: r.tol_high,
+      unit: r.unit,
+      featureType: featureTypeFor(suggestBalloons.get(r.balloon)),
+    });
+  const withSuggestedInstrument = (r: ReportRow): ReportRow | null => {
+    const s = suggestionFor(r);
+    if (!s.instrument) return null;
+    // Same rules as the Instrument dropdown's onChange, so Unit / Instr. ID follow as usual.
+    const ids = instrumentIdOptions(s.instrument);
+    const instr_id = ids.includes(r.instr_id) ? r.instr_id : "";
+    const units = unitOptionsForInstrument(s.instrument);
+    const unit = units.includes(r.unit) ? r.unit : defaultUnitForInstrument(s.instrument);
+    return { ...r, instrument: s.instrument, instr_id, unit, instrument_auto: true };
+  };
+  const isManualInstrument = (r: ReportRow) =>
+    r.instrument_auto === false || manualInstrRef.current.has(r.balloon) || (!!r.instrument && r.instrument_auto !== true);
+
+  // Load shared rules once (falls back to built-in defaults).
+  useEffect(() => {
+    let alive = true;
+    api
+      .getInstrumentRules()
+      .then((res) => {
+        if (!alive) return;
+        setActiveRules(mergeRules(res.rules));
+        setRulesCanEdit(res.can_edit);
+        setRulesRev((n) => n + 1);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    manualInstrRef.current = new Set();
+  }, [job.id]);
+
+  // A hand-made change in an Instrument dropdown marks that row manual. Capture phase runs
+  // before React's onChange, so the flag lands in the same update as the new instrument.
+  useEffect(() => {
+    const onManual = (e: Event) => {
+      const sel = e.target;
+      if (!(sel instanceof HTMLSelectElement)) return;
+      const tag = (sel.nextElementSibling as HTMLElement | null)?.dataset.instrSettingsBalloon;
+      if (!tag) return;
+      const balloon = Number(tag);
+      manualInstrRef.current.add(balloon);
+      setRows((rs) => rs.map((x) => (x.balloon === balloon ? { ...x, instrument_auto: false } : x)));
+    };
+    document.addEventListener("change", onManual, true);
+    return () => document.removeEventListener("change", onManual, true);
+  }, []);
+
+  // Select the suggested instrument in every empty, not-manual row.
+  useEffect(() => {
+    let filled = 0;
+    const next = rows.map((r) => {
+      if (r.instrument || isManualInstrument(r)) return r;
+      const s = withSuggestedInstrument(r);
+      if (!s) return r;
+      filled += 1;
+      return s;
+    });
+    if (!filled) return;
+    markRowsDirty();
+    setRows(next);
+    setMsg(`Instrument auto-selected for ${filled} row(s) — change any by hand if needed, then Save report data.`);
+  }, [rows, rulesRev]);
+
+  const autoInstrumentCounts = rows.reduce<Record<string, number>>((acc, r) => {
+    if (r.instrument && r.instrument_auto === true) acc[r.instrument] = (acc[r.instrument] || 0) + 1;
+    return acc;
+  }, {});
+
+  const saveInstrumentRules = async (edited: EditableInstrumentRules) => {
+    const res = await api.saveInstrumentRules(edited);
+    setActiveRules(mergeRules(res.rules));
+    const changed = new Set<number>();
+    const next = rows.map((r) => {
+      if (isManualInstrument(r)) return r;
+      const s = withSuggestedInstrument(r);
+      if (s) {
+        if (s.instrument !== r.instrument) changed.add(r.balloon);
+        return s;
+      }
+      if (!r.instrument) return r;
+      changed.add(r.balloon); // nothing qualifies any more → clear for review
+      return { ...r, instrument: "", instrument_auto: true };
+    });
+    if (changed.size) {
+      markRowsDirty();
+      setRows(next);
+    }
+    setRulesRev((n) => n + 1);
+    setShowInstrSettings(false);
+    setFlashBalloons(changed);
+    window.setTimeout(() => setFlashBalloons(new Set()), 2000);
+    setInstrToast(`Instrument rules updated — ${changed.size} rows changed.`);
+    window.setTimeout(() => setInstrToast(""), 4000);
+  };
+
+  const applySuggestionsToEmptyRows = () => {
+    let filled = 0;
+    const next = rows.map((r) => {
+      if (r.instrument) return r;
+      const s = withSuggestedInstrument(r);
+      if (!s) return r;
+      filled += 1;
+      manualInstrRef.current.delete(r.balloon);
+      return s;
+    });
+    if (filled) {
+      markRowsDirty();
+      setRows(next);
+    }
+    setMsg(
+      filled
+        ? `Instrument suggested for ${filled} empty row(s) — review, then Save report data.`
+        : "No empty rows with a suitable instrument.",
+    );
+  };
+
   const setColValue = (colId: string, balloon: number, val: string) => {
     markRowsDirty();
     setCols((cs) =>
@@ -2121,8 +2360,23 @@ function ReportPanel({
             </p>
           </div>
           <div className="row">
+            <button
+              className="btn btn-ghost btn-sm instr-settings-open"
+              onClick={() => setShowInstrSettings(true)}
+              title={rulesCanEdit ? "Edit instrument auto-selection rules" : "View instrument auto-selection rules"}
+            >
+              Instrument Settings
+            </button>
             <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void extractTitle()} title="Read title block / drawing labels into empty report fields">
               Extract from drawing
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              disabled={busy}
+              onClick={applySuggestionsToEmptyRows}
+              title="Fill empty Instrument cells using the rule table. Rows that already have an instrument are never changed."
+            >
+              Suggest instruments for empty rows
             </button>
             <button className="btn btn-primary btn-sm" style={{ width: "auto" }} disabled={busy} onClick={() => void save()}>
               Save report data
@@ -2132,6 +2386,18 @@ function ReportPanel({
             </button>
           </div>
         </div>
+
+        {showInstrSettings && (
+          <InstrumentSettingsPanel
+            key={rulesRev}
+            rules={getActiveRules()}
+            canEdit={rulesCanEdit}
+            autoCounts={autoInstrumentCounts}
+            onSave={saveInstrumentRules}
+            onClose={() => setShowInstrSettings(false)}
+          />
+        )}
+        {instrToast && <div className="instr-settings-toast">{instrToast}</div>}
 
         <div className="report-download-bar mb">
           <div className="row report-download-scope">
@@ -2356,6 +2622,26 @@ function ReportPanel({
                         <option value={r.instrument}>{r.instrument}</option>
                       )}
                     </select>
+                    {(() => {
+                      const s = suggestionFor(r);
+                      return (
+                        <div
+                          data-instr-settings-balloon={r.balloon}
+                          title={`${s.reason}${r.instrument_auto === true ? " · auto-selected" : r.instrument ? " · chosen manually" : ""}`}
+                          style={{
+                            fontSize: 11,
+                            lineHeight: 1.3,
+                            marginTop: 2,
+                            maxWidth: 220,
+                            color: s.instrument ? "var(--muted)" : "#f97316",
+                            fontWeight: s.instrument ? 400 : 600,
+                          }}
+                        >
+                          {s.instrument ? s.summary : "No suitable instrument — review"}
+                          {flashBalloons.has(r.balloon) && <span className="instr-settings-flash" />}
+                        </div>
+                      );
+                    })()}
                   </td>
                     <td>
                       <select

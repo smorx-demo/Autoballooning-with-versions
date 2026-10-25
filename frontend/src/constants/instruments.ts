@@ -14,16 +14,16 @@ export const INSTRUMENT_OPTIONS = [
 
 /** Units allowed for each instrument (per shop standard). */
 export const UNITS_BY_INSTRUMENT: Record<string, string[]> = {
-  "Vernier Caliper": ["mm"],
-  "Digital Vernier Caliper": ["mm"],
-  Micrometer: ["mm"],
-  "Height Gauge": ["mm"],
-  "Dial Indicator": ["mm"],
-  "Bore Gauge": ["mm"],
-  CMM: ["mm"],
-  "Vision Inspection System": ["mm"],
-  "Laser Scanner": ["mm"],
-  "Measuring Tape": ["mm", "cm", "m"],
+  "Vernier Caliper": ["mm", "in"],
+  "Digital Vernier Caliper": ["mm", "in"],
+  Micrometer: ["mm", "µm", "in"],
+  "Height Gauge": ["mm", "in"],
+  "Dial Indicator": ["mm", "µm", "in"],
+  "Bore Gauge": ["mm", "µm", "in"],
+  CMM: ["mm", "µm", "in", "°"],
+  "Vision Inspection System": ["mm", "µm", "in", "°"],
+  "Laser Scanner": ["mm", "µm", "in"],
+  "Measuring Tape": ["mm", "cm", "m", "in", "ft"],
 };
 
 const ALL_UNITS = ["mm", "cm", "m", "in"];

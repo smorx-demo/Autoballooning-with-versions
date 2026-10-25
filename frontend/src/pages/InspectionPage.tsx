@@ -23,6 +23,7 @@ import {
 } from "../constants/instrumentSuggest";
 import InstrumentSettingsPanel from "../components/InstrumentSettingsPanel";
 import { currentHighlightMap, highlightedBalloonNumbers } from "../constants/versionHighlight";
+import "../components/version-highlight.css";
 import { getJobSession, setJobSession, useAuth } from "../auth";
 import BalloonCanvas, { type Mode } from "../components/BalloonCanvas";
 import ZoomImageViewer from "../components/ZoomImageViewer";
@@ -2079,6 +2080,9 @@ function ReportPanel({
   const [flashBalloons, setFlashBalloons] = useState<Set<number>>(() => new Set());
   // Balloons whose instrument was picked by hand this session (before the flag is saved).
   const manualInstrRef = useRef<Set<number>>(new Set());
+  // Drawing version: Changed / New balloon rows are highlighted (follows the dimension, not the number).
+  const reportVersion = (job as Job & { drawing_version?: DrawingVersionInfo }).drawing_version;
+  const versionRows = new Set(highlightedBalloonNumbers(reportVersion, job.balloons));
   const suggestBalloons = new Map((job.balloons || []).map((b) => [b.balloon, b]));
   const suggestionFor = (r: ReportRow): InstrumentSuggestion =>
     suggestInstrument({
@@ -2362,6 +2366,9 @@ function ReportPanel({
         <div className="row-between mb">
           <div>
             <h2 style={{ margin: 0 }}>Inspection Report</h2>
+            {reportVersion?.version && !reportVersion.pending && (
+              <span className="dv-version-badge">Version {reportVersion.version}</span>
+            )}
             <p className="muted" style={{ margin: "4px 0 0" }}>
               {APP_TITLE} · {filteredRows.length} characteristics · {scopeLabel}
             </p>
@@ -2646,6 +2653,7 @@ function ReportPanel({
                         >
                           {s.instrument ? s.summary : "No suitable instrument — review"}
                           {flashBalloons.has(r.balloon) && <span className="instr-settings-flash" />}
+                          {versionRows.has(r.balloon) && <span className="dv-version-row" />}
                         </div>
                       );
                     })()}

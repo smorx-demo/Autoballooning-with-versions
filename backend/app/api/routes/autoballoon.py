@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, Response
 from app.api.dependencies import require_perm
 from app.core.config import JOBS, UPLOADS
 from app.schemas import BalloonDeleteMany, BalloonUpdate, AreaBalloonRequest, ReportPayload, ReportRowsChunk
+from app.services.drawing_versions import version_report_info
 from app.services.master_report import build_master_pdf, build_master_xlsx, ensure_master_fields
 from app.services.report_pdf import (
     build_report_pdf,
@@ -1942,6 +1943,7 @@ def download_report_pdf(
         "authorized_signatory": meta.get("authorized_signatory", ""),
         "rows": rows,
         "measure_columns": meta.get("measure_columns") or default_measure_columns(),
+        "version_highlight": version_report_info(meta),
     }
     try:
         pdf = build_report_pdf(payload)
@@ -1980,6 +1982,7 @@ def save_and_download_report_pdf(
     meta["measure_columns"] = [c.model_dump() for c in body.measure_columns]
     _save_meta_local(job_id, meta)
     payload = body.model_dump()
+    payload["version_highlight"] = version_report_info(meta)
     jd = _job_dir(job_id)
     out_pdf = jd / "inspection_report.pdf"
     try:
@@ -2038,6 +2041,7 @@ def download_excel(
         "authorized_signatory": meta.get("authorized_signatory", ""),
         "rows": rows,
         "measure_columns": meta.get("measure_columns") or default_measure_columns(),
+        "version_highlight": version_report_info(meta),
     }
     try:
         xlsx = build_report_xlsx(payload)

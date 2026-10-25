@@ -377,6 +377,22 @@ def current_highlight_numbers(features: list[dict], balloons: list[dict]) -> dic
     return out
 
 
+def version_report_info(meta: dict) -> dict:
+    """For the inspection report: {"version": N, "rows": [current balloon numbers of Changed / New features]}."""
+    try:
+        info = meta.get("drawing_version") or {}
+        if not info.get("version") or info.get("pending"):
+            return {}
+        features = info.get("highlight_features")
+        if features is None:
+            numbers = [int(n) for n in info.get("highlighted") or []]
+        else:
+            numbers = list(current_highlight_numbers(features, meta.get("balloons") or []).values())
+        return {"version": int(info["version"]), "rows": sorted(numbers)}
+    except Exception:
+        return {}
+
+
 def apply_version_overlay_for_job(job_dir: Path, src_pdf: Path, out_pdf: Path, balloons: list[dict]) -> None:
     """Re-apply the version highlight after any redraw of the ballooned PDF (edits, renumbering).
 
